@@ -46,6 +46,7 @@ jobs:
             You will receive repository and a command. You will follow the commands, and open a PR if relevant.
             Do NOT make any changes directly to main EVER, only through a PR via a new branch.
           prompt: ${{ inputs.command }}
+          model: "claude-sonnet-4-6"
 
       - name: Parse Claude Code Execution Results
         id: parse_results
