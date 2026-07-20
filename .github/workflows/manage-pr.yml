@@ -1,0 +1,78 @@
+name: Manage Pull Request
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        required: true
+        description: "The action to perform on the pull request (close, merge, or approve)"
+        type: string
+      pr_link:
+        required: true
+        description: "The URL of the pull request to manage"
+        type: string
+
+jobs:
+  manage-pr:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Extract repository and PR number
+        id: extract_info
+        run: |
+          link="${{ inputs.pr_link }}"
+          repo_info=$(echo "$link" | sed 's|https://github.com/||' | awk -F'/' '{print $1 "/" $2}')
+          pr_number=$(echo "$link" | awk -F'/' '{print $NF}')
+
+          echo "REPO_INFO=$repo_info" >> $GITHUB_ENV
+          echo "PR_NUMBER=$pr_number" >> $GITHUB_ENV
+
+      - name: Determine action
+        run: |
+          action="${{ github.event.inputs.action }}"
+          repo_info="${{ env.REPO_INFO }}"
+          pr_number="${{ env.PR_NUMBER }}"
+
+          result=""
+          result_message=""
+
+          if [ -n "$repo_info" ] && [ -n "$pr_number" ]; then
+            if [ "$action" == "close" ]; then
+              result=$(curl -s -o /dev/null -w "%{http_code}" \
+                -X PATCH \
+                -H "Authorization: token ${{ secrets.PORT_GITHUB_TOKEN }}" \
+                -H "Accept: application/vnd.github.v3+json" \
+                "https://api.github.com/repos/$repo_info/pulls/$pr_number" \
+                -d '{"state": "closed"}')
+            elif [ "$action" == "merge" ]; then
+              result=$(curl -s -o /dev/null -w "%{http_code}" \
+                -X PUT \
+                -H "Authorization: token ${{ secrets.PORT_GITHUB_TOKEN }}" \
+                -H "Accept: application/vnd.github.v3+json" \
+                "https://api.github.com/repos/$repo_info/pulls/$pr_number/merge")
+            elif [ "$action" == "approve" ]; then
+              result=$(curl -s -o /dev/null -w "%{http_code}" \
+                -X POST \
+                -H "Authorization: token ${{ secrets.PORT_GITHUB_TOKEN }}" \
+                -H "Accept: application/vnd.github.v3+json" \
+                "https://api.github.com/repos/$repo_info/pulls/$pr_number/reviews" \
+                -d '{"event": "APPROVE"}')
+            else
+              result_message="Invalid action specified. Expected 'close', 'approve' or 'merge'."
+              echo "$result_message"
+              exit 1
+            fi
+          else
+            result_message="Failed to extract repository and PR number from the URL."
+            echo "$result_message"
+            exit 1
+          fi
+
+          echo "HTTP status for $action: $result"
+
+          if [ "$result" -eq 200 ]; then
+            echo "PR $action completed successfully"
+          else
+            echo "PR $action failed. HTTP status: $result"
+            exit 1
+          fi
