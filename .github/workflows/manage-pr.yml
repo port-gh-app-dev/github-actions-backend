@@ -40,20 +40,20 @@ jobs:
             if [ "$action" == "close" ]; then
               result=$(curl -s -o /dev/null -w "%{http_code}" \
                 -X PATCH \
-                -H "Authorization: token ${{ secrets.PORT_GITHUB_TOKEN }}" \
+                -H "Authorization: token ${{ secrets.COMMENT_ON_PR_TOKEN }}" \
                 -H "Accept: application/vnd.github.v3+json" \
                 "https://api.github.com/repos/$repo_info/pulls/$pr_number" \
                 -d '{"state": "closed"}')
             elif [ "$action" == "merge" ]; then
               result=$(curl -s -o /dev/null -w "%{http_code}" \
                 -X PUT \
-                -H "Authorization: token ${{ secrets.PORT_GITHUB_TOKEN }}" \
+                -H "Authorization: token ${{ secrets.COMMENT_ON_PR_TOKEN }}" \
                 -H "Accept: application/vnd.github.v3+json" \
                 "https://api.github.com/repos/$repo_info/pulls/$pr_number/merge")
             elif [ "$action" == "approve" ]; then
               result=$(curl -s -o /dev/null -w "%{http_code}" \
                 -X POST \
-                -H "Authorization: token ${{ secrets.PORT_GITHUB_TOKEN }}" \
+                -H "Authorization: token ${{ secrets.COMMENT_ON_PR_TOKEN }}" \
                 -H "Accept: application/vnd.github.v3+json" \
                 "https://api.github.com/repos/$repo_info/pulls/$pr_number/reviews" \
                 -d '{"event": "APPROVE"}')
