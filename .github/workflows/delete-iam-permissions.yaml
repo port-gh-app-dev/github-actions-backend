@@ -1,0 +1,34 @@
+name: Delete IAM permissions for AWS resource
+on:
+  workflow_dispatch:
+    inputs:
+      role_name:
+        type: string
+        required: true
+        description: The name of the IAM role and policy to delete (the provisioned permission identifier)
+
+jobs:
+  delete-permissions:
+    name: Delete IAM permissions
+    runs-on: ubuntu-latest
+    env:
+      POLICY_ARN: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:policy/${{ inputs.role_name }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: true
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.PORT_AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.PORT_AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+      - name: Delete policies
+        id: delete-policies
+        run: |
+          # Detach the policy from the role
+          aws iam detach-role-policy --role-name ${{ inputs.role_name }} --policy-arn ${{ env.POLICY_ARN }}
+          # Delete the policy
+          aws iam delete-policy --policy-arn "${{ env.POLICY_ARN }}" --no-cli-pager
+          # Delete the role
+          aws iam delete-role --role-name ${{ inputs.role_name }} --no-cli-pager
