@@ -1,0 +1,25 @@
+name: Restart Azure Virtual Machine
+
+on:
+  workflow_dispatch:
+    inputs:
+      port_context:
+        required: true
+        description: 'Port workflow context (entity, subscription, resource group)'
+        type: string
+
+jobs:
+  restart-vm:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Azure Login
+        uses: azure/login@v2
+        env:
+          AZURE_LOGIN_PRE_CLEANUP: true
+          AZURE_LOGIN_POST_CLEANUP: true
+        with:
+          creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ fromJson(inputs.port_context).subscription_id }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}"}'
+
+      - name: Restart Azure Virtual Machine
+        run: |
+          az vm restart --name ${{ fromJson(inputs.port_context).entity.title }} --resource-group ${{ fromJson(inputs.port_context).resource_group }}
