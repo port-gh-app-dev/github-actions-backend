@@ -1,0 +1,32 @@
+name: Redrive DLQ Messages
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_queue:
+        description: 'The source queue ARN'
+        required: true
+        type: string
+      destination_queue:
+        description: 'The destination queue ARN'
+        required: true
+        type: string
+      max_messages_per_second:
+        description: 'Max number of messages per second'
+        required: true
+        type: string
+
+jobs:
+  redrive-queue:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+
+      - name: Redrive DLQ messages
+        run: aws sqs start-message-move-task --source-arn ${{ inputs.source_queue }} --destination-arn ${{ inputs.destination_queue }} --max-number-of-messages-per-second ${{ inputs.max_messages_per_second }}
