@@ -1,0 +1,85 @@
+name: Scale Auto Scaling Group
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        required: true
+        description: 'The scaling operation to perform'
+        type: string
+      port_context:
+        required: true
+        description: 'Port workflow context (entity)'
+        type: string
+
+jobs:
+  scale-autoscaling-group:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+
+      - name: Calculate new desired capacity
+        run: |
+          CURRENT_DESIRED=${{ fromJson(inputs.port_context).entity.properties.desiredCapacity }}
+          MIN_SIZE=${{ fromJson(inputs.port_context).entity.properties.minSize }}
+          MAX_SIZE=${{ fromJson(inputs.port_context).entity.properties.maxSize }}
+          OPERATION="${{ inputs.operation }}"
+
+          case $OPERATION in
+            "scale up")
+              NEW_DESIRED=$((CURRENT_DESIRED + 1))
+              echo "Scaling up from $CURRENT_DESIRED to $NEW_DESIRED"
+              ;;
+            "scale down")
+              NEW_DESIRED=$((CURRENT_DESIRED - 1))
+              echo "Scaling down from $CURRENT_DESIRED to $NEW_DESIRED"
+              ;;
+            "scale to max")
+              NEW_DESIRED=$MAX_SIZE
+              echo "Scaling to maximum capacity: $NEW_DESIRED"
+              ;;
+            "scale to min")
+              NEW_DESIRED=$MIN_SIZE
+              echo "Scaling to minimum capacity: $NEW_DESIRED"
+              ;;
+            *)
+              echo "Unknown operation: $OPERATION"
+              exit 1
+              ;;
+          esac
+
+          # Validate the new desired capacity
+          if [ "$NEW_DESIRED" -lt "$MIN_SIZE" ]; then
+            echo "Cannot scale down below minimum size $MIN_SIZE"
+            exit 1
+          fi
+
+          echo "NEW_DESIRED=$NEW_DESIRED" >> $GITHUB_ENV
+          echo "MAX_SIZE=$MAX_SIZE" >> $GITHUB_ENV
+          echo "New desired capacity calculated: $NEW_DESIRED"
+
+      - name: Scale Auto Scaling Group
+        run: |
+          # Convert to integers for comparison
+          NEW_DESIRED_INT=$(echo "$NEW_DESIRED" | bc)
+          MAX_SIZE_INT=$(echo "$MAX_SIZE" | bc)
+
+          # If desired capacity exceeds max size, update both desired and max
+          if [ "$NEW_DESIRED_INT" -gt "$MAX_SIZE_INT" ]; then
+            echo "Desired capacity $NEW_DESIRED_INT exceeds max size $MAX_SIZE_INT. Updating both values..."
+            aws autoscaling update-auto-scaling-group \
+              --auto-scaling-group-name ${{ fromJson(inputs.port_context).entity.title }} \
+              --desired-capacity $NEW_DESIRED \
+              --max-size $NEW_DESIRED
+          else
+            echo "Updating desired capacity to $NEW_DESIRED..."
+            aws autoscaling update-auto-scaling-group \
+              --auto-scaling-group-name ${{ fromJson(inputs.port_context).entity.title }} \
+              --desired-capacity $NEW_DESIRED
+          fi
