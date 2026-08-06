@@ -1,0 +1,24 @@
+name: Delete SQS Queue
+
+on:
+  workflow_dispatch:
+    inputs:
+      port_context:
+        required: true
+        description: 'Port workflow context (entity)'
+        type: string
+
+jobs:
+  delete-queue:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+
+      - name: Delete SQS queue
+        run: aws sqs delete-queue --queue-url ${{ fromJson(inputs.port_context).entity.properties.link }}
