@@ -1,0 +1,28 @@
+name: Request ACM Certificate
+
+on:
+  workflow_dispatch:
+    inputs:
+      domain_name:
+        required: true
+        description: 'The fully qualified domain name (FQDN) that you want to secure with an ACM certificate'
+        type: string
+      validation_method:
+        required: true
+        description: 'The method you want to use to validate that you own or control domain'
+        type: string
+
+jobs:
+  request-acm:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+
+      - name: Request ACM certificate
+        run: aws acm request-certificate --domain-name ${{ inputs.domain_name }} --validation-method ${{ inputs.validation_method }}
