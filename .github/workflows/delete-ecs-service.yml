@@ -1,0 +1,165 @@
+name: Delete ECS Service
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Type DELETE to confirm service deletion'
+        required: true
+        type: string
+      port_context:
+        required: true
+        description: 'Port workflow context (entity)'
+        type: string
+
+jobs:
+  delete-ecs-service:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate confirmation
+        run: |
+          if [ "${{ github.event.inputs.confirmation }}" != "DELETE" ]; then
+            echo "❌ Confirmation failed. You must type 'DELETE' exactly to proceed."
+            exit 1
+          fi
+          echo "✅ Confirmation validated"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+
+      - name: Get service information
+        id: service-info
+        run: |
+          CLUSTER_NAME="${{ fromJson(inputs.port_context).entity.relations.cluster }}"
+          SERVICE_ARN="${{ fromJson(inputs.port_context).entity.identifier }}"
+
+          echo "🔍 Getting service information..."
+
+          # Get service details before deletion
+          SERVICE_NAME=$(aws ecs describe-services \
+            --cluster "$CLUSTER_NAME" \
+            --services "$SERVICE_ARN" \
+            --query 'services[0].serviceName' \
+            --output text)
+
+          DESIRED_COUNT=$(aws ecs describe-services \
+            --cluster "$CLUSTER_NAME" \
+            --services "$SERVICE_ARN" \
+            --query 'services[0].desiredCount' \
+            --output text)
+
+          RUNNING_COUNT=$(aws ecs describe-services \
+            --cluster "$CLUSTER_NAME" \
+            --services "$SERVICE_ARN" \
+            --query 'services[0].runningCount' \
+            --output text)
+
+          TASK_DEFINITION=$(aws ecs describe-services \
+            --cluster "$CLUSTER_NAME" \
+            --services "$SERVICE_ARN" \
+            --query 'services[0].taskDefinition' \
+            --output text)
+
+          echo "service_name=$SERVICE_NAME" >> $GITHUB_OUTPUT
+          echo "desired_count=$DESIRED_COUNT" >> $GITHUB_OUTPUT
+          echo "running_count=$RUNNING_COUNT" >> $GITHUB_OUTPUT
+          echo "task_definition=$TASK_DEFINITION" >> $GITHUB_OUTPUT
+
+          echo "📋 Service Details:"
+          echo "  Name: $SERVICE_NAME"
+          echo "  Desired Count: $DESIRED_COUNT"
+          echo "  Running Count: $RUNNING_COUNT"
+          echo "  Task Definition: $TASK_DEFINITION"
+
+      - name: Scale service to zero
+        run: |
+          CLUSTER_NAME="${{ fromJson(inputs.port_context).entity.relations.cluster }}"
+          SERVICE_ARN="${{ fromJson(inputs.port_context).entity.identifier }}"
+
+          echo "⬇️ Scaling service to 0 tasks before deletion..."
+
+          aws ecs update-service \
+            --cluster "$CLUSTER_NAME" \
+            --service "$SERVICE_ARN" \
+            --desired-count 0
+
+          echo "✅ Service scaled to 0 tasks"
+
+      - name: Wait for tasks to stop
+        run: |
+          CLUSTER_NAME="${{ fromJson(inputs.port_context).entity.relations.cluster }}"
+          SERVICE_ARN="${{ fromJson(inputs.port_context).entity.identifier }}"
+
+          echo "⏳ Waiting for all tasks to stop..."
+
+          # Wait for service to become stable with 0 running tasks
+          aws ecs wait services-stable \
+            --cluster "$CLUSTER_NAME" \
+            --services "$SERVICE_ARN"
+
+          # Verify no tasks are running
+          RUNNING_COUNT=$(aws ecs describe-services \
+            --cluster "$CLUSTER_NAME" \
+            --services "$SERVICE_ARN" \
+            --query 'services[0].runningCount' \
+            --output text)
+
+          if [ "$RUNNING_COUNT" -eq 0 ]; then
+            echo "✅ All tasks have stopped"
+          else
+            echo "⚠️ Warning: $RUNNING_COUNT tasks still running"
+          fi
+
+      - name: Delete the service
+        run: |
+          CLUSTER_NAME="${{ fromJson(inputs.port_context).entity.relations.cluster }}"
+          SERVICE_ARN="${{ fromJson(inputs.port_context).entity.identifier }}"
+
+          echo "🗑️ Deleting ECS service..."
+
+          aws ecs delete-service \
+            --cluster "$CLUSTER_NAME" \
+            --service "$SERVICE_ARN" \
+            --force
+
+          echo "✅ Service deletion initiated"
+
+      - name: Wait for service deletion
+        run: |
+          CLUSTER_NAME="${{ fromJson(inputs.port_context).entity.relations.cluster }}"
+          SERVICE_ARN="${{ fromJson(inputs.port_context).entity.identifier }}"
+
+          echo "⏳ Waiting for service deletion to complete..."
+
+          # Wait for service to be deleted (this can take a few minutes)
+          aws ecs wait services-inactive \
+            --cluster "$CLUSTER_NAME" \
+            --services "$SERVICE_ARN"
+
+          echo "✅ Service successfully deleted"
+
+      - name: Verify deletion
+        run: |
+          CLUSTER_NAME="${{ fromJson(inputs.port_context).entity.relations.cluster }}"
+          SERVICE_ARN="${{ fromJson(inputs.port_context).entity.identifier }}"
+
+          echo "🔍 Verifying service deletion..."
+
+          # Check if service still exists
+          SERVICE_STATUS=$(aws ecs describe-services \
+            --cluster "$CLUSTER_NAME" \
+            --services "$SERVICE_ARN" \
+            --query 'services[0].status' \
+            --output text 2>/dev/null || echo "NOT_FOUND")
+
+          if [ "$SERVICE_STATUS" = "INACTIVE" ] || [ "$SERVICE_STATUS" = "NOT_FOUND" ]; then
+            echo "✅ Service deletion verified"
+          else
+            echo "❌ Service deletion verification failed. Status: $SERVICE_STATUS"
+            exit 1
+          fi
