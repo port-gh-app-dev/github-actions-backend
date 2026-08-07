@@ -1,0 +1,116 @@
+name: Rollback ECS Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      port_context:
+        required: true
+        description: 'Port workflow context (entity)'
+        type: string
+
+jobs:
+  rollback-deployment:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+
+      - name: Get current and previous task definitions
+        id: task-definitions
+        run: |
+          CLUSTER_NAME="${{ fromJson(inputs.port_context).entity.relations.cluster }}"
+          SERVICE_ARN="${{ fromJson(inputs.port_context).entity.identifier }}"
+
+          # Get current task definition
+          CURRENT_TASK_DEF=$(aws ecs describe-services \
+            --cluster "$CLUSTER_NAME" \
+            --services "$SERVICE_ARN" \
+            --query 'services[0].taskDefinition' \
+            --output text)
+
+          echo "current_task_def=$CURRENT_TASK_DEF" >> $GITHUB_OUTPUT
+          echo "📋 Current task definition: $CURRENT_TASK_DEF"
+
+          # Extract family name and current revision
+          FAMILY_NAME=$(echo $CURRENT_TASK_DEF | sed 's/.*task-definition\/\([^:]*\):.*/\1/')
+          CURRENT_REVISION=$(echo $CURRENT_TASK_DEF | sed 's/.*://')
+
+          echo "family_name=$FAMILY_NAME" >> $GITHUB_OUTPUT
+          echo "current_revision=$CURRENT_REVISION" >> $GITHUB_OUTPUT
+
+          # Calculate previous revision
+          PREVIOUS_REVISION=$((CURRENT_REVISION - 1))
+
+          if [ $PREVIOUS_REVISION -lt 1 ]; then
+            echo "❌ No previous revision available to rollback to"
+            exit 1
+          fi
+
+          PREVIOUS_TASK_DEF="$FAMILY_NAME:$PREVIOUS_REVISION"
+          echo "previous_task_def=$PREVIOUS_TASK_DEF" >> $GITHUB_OUTPUT
+          echo "🔄 Will rollback to: $PREVIOUS_TASK_DEF"
+
+          # Verify previous task definition exists
+          if ! aws ecs describe-task-definition --task-definition "$PREVIOUS_TASK_DEF" > /dev/null 2>&1; then
+            echo "❌ Previous task definition $PREVIOUS_TASK_DEF does not exist"
+            exit 1
+          fi
+
+      - name: Perform rollback
+        run: |
+          CLUSTER_NAME="${{ fromJson(inputs.port_context).entity.relations.cluster }}"
+          SERVICE_ARN="${{ fromJson(inputs.port_context).entity.identifier }}"
+          PREVIOUS_TASK_DEF="${{ steps.task-definitions.outputs.previous_task_def }}"
+
+          echo "🔄 Rolling back service to previous task definition..."
+
+          aws ecs update-service \
+            --cluster "$CLUSTER_NAME" \
+            --service "$SERVICE_ARN" \
+            --task-definition "$PREVIOUS_TASK_DEF"
+
+          echo "✅ Rollback initiated"
+
+      - name: Wait for rollback to complete
+        run: |
+          CLUSTER_NAME="${{ fromJson(inputs.port_context).entity.relations.cluster }}"
+          SERVICE_ARN="${{ fromJson(inputs.port_context).entity.identifier }}"
+
+          echo "⏳ Waiting for rollback deployment to stabilize..."
+
+          # Wait for service to become stable
+          aws ecs wait services-stable \
+            --cluster "$CLUSTER_NAME" \
+            --services "$SERVICE_ARN"
+
+          echo "✅ Rollback completed successfully"
+
+      - name: Verify rollback
+        run: |
+          CLUSTER_NAME="${{ fromJson(inputs.port_context).entity.relations.cluster }}"
+          SERVICE_ARN="${{ fromJson(inputs.port_context).entity.identifier }}"
+          EXPECTED_TASK_DEF="${{ steps.task-definitions.outputs.previous_task_def }}"
+
+          # Verify the service is now using the previous task definition
+          CURRENT_TASK_DEF=$(aws ecs describe-services \
+            --cluster "$CLUSTER_NAME" \
+            --services "$SERVICE_ARN" \
+            --query 'services[0].taskDefinition' \
+            --output text)
+
+          CURRENT_FAMILY_REV=$(echo $CURRENT_TASK_DEF | sed 's/.*task-definition\/\(.*\)/\1/')
+
+          if [[ "$CURRENT_FAMILY_REV" == "$EXPECTED_TASK_DEF" ]]; then
+            echo "✅ Rollback verification successful"
+            echo "Service is now running: $CURRENT_TASK_DEF"
+          else
+            echo "❌ Rollback verification failed"
+            echo "Expected: $EXPECTED_TASK_DEF"
+            echo "Actual: $CURRENT_FAMILY_REV"
+            exit 1
+          fi
