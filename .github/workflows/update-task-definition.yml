@@ -1,0 +1,86 @@
+name: Update ECS Task Definition
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_uri:
+        description: 'New container image URI'
+        required: true
+        type: string
+      port_context:
+        required: true
+        description: 'Port workflow context (entity)'
+        type: string
+
+jobs:
+  update-task-definition:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+
+      - name: Get current task definition
+        id: current-task-def
+        run: |
+          CLUSTER_NAME="${{ fromJson(inputs.port_context).entity.relations.cluster }}"
+          SERVICE_ARN="${{ fromJson(inputs.port_context).entity.identifier }}"
+
+          # Get current task definition ARN
+          TASK_DEF_ARN=$(aws ecs describe-services \
+            --cluster "$CLUSTER_NAME" \
+            --services "$SERVICE_ARN" \
+            --query 'services[0].taskDefinition' \
+            --output text)
+
+          echo "current_task_def_arn=$TASK_DEF_ARN" >> $GITHUB_OUTPUT
+
+          # Get task definition details
+          aws ecs describe-task-definition \
+            --task-definition "$TASK_DEF_ARN" \
+            --query 'taskDefinition' > current-task-def.json
+
+      - name: Update task definition with new image
+        id: new-task-def
+        run: |
+          # Update the image URI in the task definition
+          jq --arg new_image "${{ github.event.inputs.image_uri }}" \
+            '.containerDefinitions[0].image = $new_image |
+              del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .placementConstraints, .compatibilities, .registeredAt, .registeredBy)' \
+            current-task-def.json > new-task-def.json
+
+          # Register new task definition
+          NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file://new-task-def.json \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+
+          echo "new_task_def_arn=$NEW_TASK_DEF_ARN" >> $GITHUB_OUTPUT
+          echo "📝 Registered new task definition: $NEW_TASK_DEF_ARN"
+
+      - name: Update service with new task definition
+        run: |
+          CLUSTER_NAME="${{ fromJson(inputs.port_context).entity.relations.cluster }}"
+          SERVICE_ARN="${{ fromJson(inputs.port_context).entity.identifier }}"
+          NEW_TASK_DEF_ARN="${{ steps.new-task-def.outputs.new_task_def_arn }}"
+
+          echo "🚀 Updating service with new task definition..."
+
+          aws ecs update-service \
+            --cluster "$CLUSTER_NAME" \
+            --service "$SERVICE_ARN" \
+            --task-definition "$NEW_TASK_DEF_ARN"
+
+      - name: Wait for deployment to complete
+        run: |
+          CLUSTER_NAME="${{ fromJson(inputs.port_context).entity.relations.cluster }}"
+          SERVICE_ARN="${{ fromJson(inputs.port_context).entity.identifier }}"
+
+          echo "⏳ Waiting for deployment to complete..."
+          aws ecs wait services-stable \
+            --cluster "$CLUSTER_NAME" \
+            --services "$SERVICE_ARN"
