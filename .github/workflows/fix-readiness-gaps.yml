@@ -1,0 +1,103 @@
+name: Fix readiness gaps
+
+# Lives in the platform-automation repo. Triggered by the Port self-service action "fix_readiness_gaps".
+
+on:
+  workflow_dispatch:
+    inputs:
+      repository:
+        description: "Target repo as org/name"
+        required: true
+        type: string
+      failing_rules:
+        description: "JSON array of rule identifiers to fix"
+        required: true
+        type: string
+      draft:
+        description: "Open the PR as a draft"
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout target repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.repository }}
+          token: ${{ secrets.TARGET_REPO_TOKEN }}
+          path: target
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Write prompt
+        env:
+          FAILING_RULES: ${{ inputs.failing_rules }}
+        run: |
+          cat > "$RUNNER_TEMP/prompt.md" << 'EOF'
+          You are adding missing agent readiness files to this repository.
+          Only create or edit the files needed to fix the rules listed below. Do not change application code.
+
+          Rule-to-file guidance:
+          - readme_present: create README.md with a short description, setup steps, and how to run tests.
+          - agent_instructions_present: create AGENTS.md at the root. Describe what agents can do, what to avoid, and how to run the service. Only state commands you can confirm exist in the repo (package.json scripts, Makefile targets, pyproject.toml, and so on).
+          - codeowners_present: create .github/CODEOWNERS. Use the GitHub org teams that appear in existing config or docs. If none are clear, add a single placeholder line and say so in the PR body.
+          - build_test_commands_documented: add a "Development" section to README.md with the real build and test commands from the repo.
+          - lint_config_present: add a lint config that matches the language in use, and add the lint command to the README.
+          - devcontainer_present: create .devcontainer/devcontainer.json that matches the language and tooling in use.
+          - env_example_present: create .env.example listing every environment variable the code reads. Use placeholder values only.
+          - pre_commit_present: create .pre-commit-config.yaml with the lint and format hooks the repo already uses.
+          - dependency_updates_configured: create .github/dependabot.yml for the package ecosystems in use.
+          - pr_template_present: create .github/pull_request_template.md with sections for summary, testing, and risk.
+          - agent_security_guardrails_present, no_hardcoded_secrets, parameterized_queries_enforced: add a "Security" section to AGENTS.md (create the file if missing). It must say to follow OWASP guidance, never hardcode API keys, tokens, or credentials, and use parameterized queries or prepared statements for all database access.
+
+          Rules to fix (JSON array):
+          EOF
+          echo "$FAILING_RULES" >> "$RUNNER_TEMP/prompt.md"
+
+      - name: Run Claude Code
+        working-directory: target
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          claude -p "$(cat "$RUNNER_TEMP/prompt.md")" \
+            --allowedTools "Read" "Write" "Edit" "Glob" "Grep" "Bash(ls:*)" "Bash(git status:*)" "Bash(git diff:*)"
+
+      - name: Commit, push, and open PR
+        working-directory: target
+        env:
+          GH_TOKEN: ${{ secrets.TARGET_REPO_TOKEN }}
+          DRAFT: ${{ inputs.draft }}
+        run: |
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "Claude Code made no changes. Nothing to open."
+            exit 0
+          fi
+
+          BRANCH="agent-readiness/$(date +%Y%m%d-%H%M%S)"
+          BASE=$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name)
+
+          git checkout -b "$BRANCH"
+          git config user.name "port-readiness-bot"
+          git config user.email "readiness-bot@users.noreply.github.com"
+          git add -A
+          git commit -m "Add agent readiness files"
+          git push -u origin "$BRANCH"
+
+          ARGS=(--base "$BASE" --head "$BRANCH" --title "Add agent readiness files" \
+            --body "Opened by the Port 'Fix readiness gaps' action. Review the generated files before merging. Confirm that any commands and owners in AGENTS.md, README.md, and CODEOWNERS are correct.")
+          if [ "$DRAFT" = "true" ]; then
+            ARGS+=(--draft)
+          fi
+          gh pr create "${ARGS[@]}"
