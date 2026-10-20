@@ -1,0 +1,8 @@
+# Default owners for this repository
+* @port-labs/platform-team
+
+# Workflows and GitHub config
+.github/ @port-labs/platform-team
+
+# Terraform
+*.tf @port-labs/platform-team

@@ -1,0 +1,83 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "GitHub Actions Backend API",
+    "description": "Reference OpenAPI specification for operational workflows exposed via GitHub Actions and Port integrations in this repository.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.github.com",
+      "description": "GitHub API (workflow dispatch)"
+    }
+  ],
+  "paths": {
+    "/repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches": {
+      "post": {
+        "summary": "Trigger a repository workflow",
+        "operationId": "dispatchWorkflow",
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "repo",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "workflow_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/WorkflowDispatch" }
+            }
+          }
+        },
+        "responses": {
+          "204": { "description": "Workflow dispatch accepted" },
+          "401": { "description": "Authentication failed" },
+          "404": { "description": "Workflow not found" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "token"
+      }
+    },
+    "schemas": {
+      "WorkflowDispatch": {
+        "type": "object",
+        "required": ["ref"],
+        "properties": {
+          "ref": {
+            "type": "string",
+            "description": "Git ref to run the workflow on",
+            "example": "main"
+          },
+          "inputs": {
+            "type": "object",
+            "additionalProperties": { "type": "string" },
+            "description": "Workflow inputs (validated server-side; never include secrets here)"
+          }
+        }
+      }
+    }
+  }
+}
