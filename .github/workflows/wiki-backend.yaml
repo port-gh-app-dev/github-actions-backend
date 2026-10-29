@@ -52,18 +52,21 @@ jobs:
         env:
           SKILL_REPO: ${{ vars.WIKI_SKILL_REPO }}
           SKILL_SHA: ${{ vars.WIKI_SKILL_SHA }}
-          GH_TOKEN: ${{ secrets.PORT_GITHUB_TOKEN }}
+          SKILL_PATH: ${{ vars.WIKI_SKILL_PATH || '.apm/skills/wiki' }}
         run: |
           set -euo pipefail
-          git clone "https://x-access-token:${GH_TOKEN}@github.com/${SKILL_REPO}.git" "$RUNNER_TEMP/skill"
+          # Public repository: no credentials are needed to clone it.
+          git clone "https://github.com/${SKILL_REPO}.git" "$RUNNER_TEMP/skill"
           git -C "$RUNNER_TEMP/skill" checkout --detach "$SKILL_SHA"
-          if [ ! -d "$RUNNER_TEMP/skill/.claude/skills/wiki" ]; then
-            echo "::error::.claude/skills/wiki not found at $SKILL_SHA in $SKILL_REPO. Check the fork's layout."
+          if [ ! -f "$RUNNER_TEMP/skill/$SKILL_PATH/SKILL.md" ]; then
+            echo "::error::No SKILL.md at $SKILL_PATH in $SKILL_REPO@$SKILL_SHA. Check WIKI_SKILL_PATH."
             exit 1
           fi
           # Install the skill at user level so it never lands in the target repository.
+          # This copies the source folder unchanged; apm produces the same files.
           mkdir -p "$HOME/.claude/skills"
-          cp -r "$RUNNER_TEMP/skill/.claude/skills/wiki" "$HOME/.claude/skills/wiki"
+          rm -rf "$HOME/.claude/skills/wiki"
+          cp -r "$RUNNER_TEMP/skill/$SKILL_PATH" "$HOME/.claude/skills/wiki"
           echo "SKILL_SCRIPTS=$HOME/.claude/skills/wiki/scripts" >> "$GITHUB_ENV"
 
       - name: Set up Python 3.12
@@ -111,6 +114,10 @@ jobs:
             ${{ inputs.mode == 'update' && format('Commit range: {0}. Limit the refresh to pages affected by files changed in this range. Use git diff --name-only on the range to find them.', inputs.commit_range) || 'Generate the whole wiki.' }}
 
             Use the wiki skill (installed at ~/.claude/skills/wiki).
+            Subagents are not available in this run. Do not try to spawn any subagent,
+            including deepwiki:workflow-runner. Execute every phase sequentially: read each
+            phase spec and its reference file from ~/.claude/skills/wiki/references/workflow/
+            and carry out the work yourself, in order.
             ${{ inputs.mode == 'full' && 'Generate the wiki into docs/wiki/.' || 'Run the wiki skill in incremental update mode against docs/wiki/toc.yaml. If docs/wiki/toc.yaml does not exist, fall back to full generation and say so in your final message.' }}
 
             Validate every Mermaid diagram you write with mmdc before you finish.
