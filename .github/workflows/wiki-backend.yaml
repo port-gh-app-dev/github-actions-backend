@@ -96,6 +96,7 @@ jobs:
         uses: anthropics/claude-code-base-action@beta
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          model: claude-haiku-5-5
           # Writing files and running the validators is all the agent needs.
           allowed_tools: "Read,Write,Edit,Glob,Grep,Bash(python3:*),Bash(mmdc:*),Bash(npx:*)"
           system_prompt: |
