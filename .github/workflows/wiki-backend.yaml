@@ -50,9 +50,9 @@ jobs:
 
       - name: Fetch the pinned deepwiki skill
         env:
-          SKILL_REPO: ${{ vars.WIKI_SKILL_REPO }}
-          SKILL_SHA: ${{ vars.WIKI_SKILL_SHA }}
-          SKILL_PATH: ${{ vars.WIKI_SKILL_PATH || '.apm/skills/wiki' }}
+          SKILL_REPO: natsu1211/deepwiki-skill
+          SKILL_SHA: 887304e68ff3711a964bcb4b3f33e47ad53c4405
+          SKILL_PATH: .apm/skills/wiki
         run: |
           set -euo pipefail
           # Public repository: no credentials are needed to clone it.
