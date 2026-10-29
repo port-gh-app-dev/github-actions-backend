@@ -190,7 +190,7 @@ jobs:
         with:
           clientId: ${{ secrets.PORT_CLIENT_ID }}
           clientSecret: ${{ secrets.PORT_CLIENT_SECRET }}
-          baseUrl: https://api.port.io
+          baseUrl: https://api.us.port.io
           operation: UPSERT
           identifier: "wiki-${{ github.run_id }}"
           title: "Wiki ${{ inputs.mode }}: ${{ inputs.repository }}"
