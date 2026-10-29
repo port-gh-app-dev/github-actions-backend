@@ -38,8 +38,6 @@ jobs:
     env:
       BRANCH: docs/wiki-${{ github.run_id }}
       # Default model for wiki generation. Claude Code reads this variable.
-      ANTHROPIC_MODEL: claude-sonnet-5-5
-      CLAUDE_CODE_MAX_OUTPUT_TOKENS: "32000"
     steps:
       - name: Check out the target repository
         uses: actions/checkout@v4
@@ -97,6 +95,12 @@ jobs:
         uses: anthropics/claude-code-base-action@beta
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          settings: |
+            {
+              "env": {
+                "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "32000"
+              }
+            }
           model: claude-haiku-5-5
           # Writing files and running the validators is all the agent needs.
           allowed_tools: "Read,Write,Edit,Glob,Grep,Bash(python3:*),Bash(mmdc:*),Bash(npx:*)"
@@ -125,6 +129,24 @@ jobs:
             Validate every Mermaid diagram you write with mmdc before you finish.
             Your final message: a short list of pages added or changed, and any problems.
 
+      - name: Stop if the agent did not finish
+        env:
+          EXEC_FILE: ${{ steps.claude.outputs.execution_file }}
+        run: |
+          set -euo pipefail
+          if [ -z "$EXEC_FILE" ] || [ ! -f "$EXEC_FILE" ]; then
+            echo "::error::The agent produced no execution file. Stopping before publish."
+            exit 1
+          fi
+          result=$(jq -c '[.[] | select(.type == "result")][0] // {}' "$EXEC_FILE")
+          is_error=$(echo "$result" | jq -r '.is_error // true')
+          if [ "$is_error" != "false" ]; then
+            msg=$(echo "$result" | jq -r '.result // "no result text"')
+            echo "::error::The agent did not finish: $msg"
+            exit 1
+          fi
+          echo "Agent finished. Continuing to validation."
+          
       - name: Validate and publish the change
         id: publish
         working-directory: target
