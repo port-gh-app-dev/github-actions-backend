@@ -11,5 +11,5 @@
 repos:
   - name: port-gh-app-dev/payment-service
     service: payment_service
-  - name: port-gh-app-dev/analytics-service
+  - name: port-gh-app-dev/skills-registry-demo
     service: payment_service
