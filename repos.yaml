@@ -11,3 +11,10 @@
 repos:
   - name: port-gh-app-dev/payment-service
   - name: port-gh-app-dev/skills-registry-demo
+  - name: port-gh-app-dev/broker-service
+  - name: port-gh-app-dev/snyk-ecs
+  - name: port-gh-app-dev/port-configuration
+  - name: port-gh-app-dev/analytics-service
+  - name: port-gh-app-dev/ads-service
+  - name: port-gh-app-dev/admin-service
+  - name: port-gh-app-dev/authentication-service
