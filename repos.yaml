@@ -1,0 +1,15 @@
+# Repositories the wiki sync keeps up to date.
+#
+# To enroll a repository:
+#   1. Add an entry below and merge the change.
+#   2. Give the sync token access to the repository (see the guide).
+#   3. In Port, run "Generate wiki" once in full mode, then review and merge the PR.
+#
+# After step 3, the hourly sync keeps the wiki current. No other setup is needed.
+#
+# "service" must equal the Port identifier of the service entity.
+repos:
+  - name: port-gh-app-dev/payment-service
+    service: payment_service
+  - name: port-gh-app-dev/analytics-service
+    service: payment_service
