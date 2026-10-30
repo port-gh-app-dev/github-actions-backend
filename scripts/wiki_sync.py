@@ -45,7 +45,7 @@ def active_backend_titles():
     return titles
 
 
-def decide(name, service, active_titles):
+def decide(name, active_titles):
     branch = api_text(f"repos/{name}", ".default_branch")
     head = api_text(f"repos/{name}/commits/{branch}", ".sha")
 
@@ -88,7 +88,6 @@ def decide(name, service, active_titles):
         "-f", f"repository={name}",
         "-f", "mode=update",
         "-f", f"commit_range={last}..{head}",
-        "-f", f"port_service={service}",
     )
     return f"dispatched {span} ({len(code_files)} code files)"
 
@@ -100,9 +99,9 @@ def main():
     active = active_backend_titles()
     rows, failures = [], 0
     for entry in repos:
-        name, service = entry["name"], entry["service"]
+        name = entry["name"]
         try:
-            outcome = decide(name, service, active)
+            outcome = decide(name, active)
         except Exception as exc:  # keep going, report at the end
             outcome = f"error: {exc}"
             failures += 1
