@@ -1,0 +1,41 @@
+name: Wiki sync
+
+on:
+  schedule:
+    - cron: '17 * * * *'   # hourly
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Report what would be dispatched, without dispatching'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wiki-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out the backend repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install pyyaml
+
+      - name: Sync enrolled repositories
+        env:
+          GH_TOKEN: ${{ secrets.WIKI_SYNC_TOKEN }}
+          BACKEND_REPO: ${{ github.repository }}
+          DRY_RUN: ${{ inputs.dry_run || 'false' }}
+        run: python3 scripts/wiki_sync.py
