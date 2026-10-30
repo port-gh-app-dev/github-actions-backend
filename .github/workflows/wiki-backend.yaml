@@ -20,10 +20,6 @@ on:
         required: false
         type: string
         default: ''
-      port_service:
-        description: 'Port identifier of the service this repository belongs to'
-        required: true
-        type: string
 
 permissions:
   contents: read
@@ -225,32 +221,3 @@ jobs:
           echo "input_tokens=0" >> "$GITHUB_OUTPUT"
           echo "output_tokens=0" >> "$GITHUB_OUTPUT"
           echo "total_cost=0" >> "$GITHUB_OUTPUT"
-
-      - name: Record the run in Port
-        if: always()
-        uses: port-labs/port-github-action@v1
-        with:
-          clientId: ${{ secrets.PORT_CLIENT_ID }}
-          clientSecret: ${{ secrets.PORT_CLIENT_SECRET }}
-          baseUrl: https://api.us.port.io
-          operation: UPSERT
-          identifier: "wiki-${{ github.run_id }}"
-          title: "Wiki ${{ inputs.mode }}: ${{ inputs.repository }}"
-          icon: "Book"
-          blueprint: "wikiRun"
-          properties: |-
-            {
-              "mode": "${{ inputs.mode }}",
-              "status": "${{ steps.publish.outputs.status || 'failed' }}",
-              "pullRequestUrl": "${{ steps.publish.outputs.pr_url }}",
-              "commitRange": "${{ inputs.commit_range }}",
-              "repository": "${{ inputs.repository }}",
-              "inputTokens": ${{ steps.usage.outputs.input_tokens || 0 }},
-              "outputTokens": ${{ steps.usage.outputs.output_tokens || 0 }},
-              "totalCost": ${{ steps.usage.outputs.total_cost || 0 }},
-              "runUrl": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-            }
-          relations: |
-            {
-              "service": "${{ inputs.port_service }}"
-            }
