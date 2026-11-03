@@ -6,8 +6,6 @@
 #   3. In Port, run "Generate wiki" once in full mode, then review and merge the PR.
 #
 # After step 3, the hourly sync keeps the wiki current. No other setup is needed.
-#
-# "service" must equal the Port identifier of the service entity.
 repos:
   - name: port-gh-app-dev/payment-service
   - name: port-gh-app-dev/skills-registry-demo
