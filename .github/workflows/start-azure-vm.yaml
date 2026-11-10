@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Azure Login
-        uses: azure/login@v2
+        uses: azure/login@v3
         env:
           AZURE_LOGIN_PRE_CLEANUP: true
           AZURE_LOGIN_POST_CLEANUP: true
